@@ -2,6 +2,10 @@ FROM node:24.18.0-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a728
 # Pin pnpm to v10 to match CI and package.json#packageManager. pnpm 11 turns
 # ERR_PNPM_IGNORED_BUILDS into a hard error, breaking fresh Docker builds.
 RUN corepack enable && corepack prepare pnpm@10.29.3 --activate
+# Tower build patch: debian.org is throttled to ~5KB/s on the Tower network;
+# the USTC mirror completes the same downloads in seconds. Upstream keeps
+# deb.debian.org for CI, so this stays a fork-local commit.
+RUN sed -i "s|deb.debian.org|mirrors.ustc.edu.cn|g" /etc/apt/sources.list.d/debian.sources /etc/apt/sources.list 2>/dev/null || true
 WORKDIR /app
 
 FROM base AS deps
