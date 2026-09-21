@@ -4,7 +4,8 @@ FROM node:24.18.0-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a728
 RUN corepack enable && corepack prepare pnpm@10.29.3 --activate
 # Tower build patch: debian.org is throttled to ~5KB/s on the Tower network;
 # the USTC mirror completes the same downloads in seconds. Upstream keeps
-# deb.debian.org for CI, so this stays a fork-local commit.
+# deb.debian.org for CI, so this stays a fork-local commit. Applied in BOTH
+# apt stages (base, which deps inherits, and runtime).
 RUN sed -i "s|deb.debian.org|mirrors.ustc.edu.cn|g" /etc/apt/sources.list.d/debian.sources /etc/apt/sources.list 2>/dev/null || true
 WORKDIR /app
 
@@ -64,6 +65,8 @@ LABEL org.opencontainers.image.version="${MC_VERSION}"
 
 WORKDIR /app
 ENV NODE_ENV=production
+# Tower build patch (mirror) — same rationale as the base stage above.
+RUN sed -i "s|deb.debian.org|mirrors.ustc.edu.cn|g" /etc/apt/sources.list.d/debian.sources /etc/apt/sources.list 2>/dev/null || true
 # curl, CA certs, python3, git needed for agent runtime installers (OpenClaw, Hermes)
 # procps provides `ps` and `uptime` used by system-monitor APIs
 RUN apt-get update && apt-get install -y curl ca-certificates python3 git make g++ procps --no-install-recommends && rm -rf /var/lib/apt/lists/*
