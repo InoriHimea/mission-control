@@ -1237,7 +1237,7 @@ function TaskDetailModal({
   const [reviewNotes, setReviewNotes] = useState('')
   const [reviewError, setReviewError] = useState<string | null>(null)
   const mentionTargets = useMentionTargets()
-  const [activeTab, setActiveTab] = useState<'details' | 'comments' | 'quality' | 'session'>('details')
+  const [activeTab, setActiveTab] = useState<'details' | 'comments' | 'quality' | 'session' | 'hermes'>('details')
   const [reviewer, setReviewer] = useState('aegis')
 
   const fetchReviews = useCallback(async () => {
@@ -1584,6 +1584,25 @@ function TaskDetailModal({
                 )}
               </button>
             )}
+            {task.metadata?.hermes_run_id && (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'hermes'}
+                aria-controls="tabpanel-hermes"
+                onClick={() => setActiveTab('hermes')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors inline-flex items-center gap-1.5 ${
+                  activeTab === 'hermes'
+                    ? 'bg-secondary text-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'
+                }`}
+              >
+                Hermes Run
+                {(task.status === 'in_progress' || task.metadata?.hermes_run_status === 'running') && (
+                  <span className="ml-0.5 inline-block h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
+                )}
+              </button>
+            )}
           </div>
 
           {activeTab === 'details' && (
@@ -1849,6 +1868,16 @@ function TaskDetailModal({
               />
             </div>
           )}
+
+          {activeTab === 'hermes' && task.metadata?.hermes_run_id && (
+            <div id="tabpanel-hermes" role="tabpanel" aria-label="Hermes Run" className="mt-4">
+              <HermesRunFeed
+                runId={task.metadata.hermes_run_id}
+                agentName={task.assigned_to}
+                isLive={task.status === 'in_progress' || task.metadata?.hermes_run_status === 'running'}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1942,6 +1971,155 @@ function TaskSessionFeed({ sessionId, agentName, isLive }: { sessionId: string; 
               showTimestamp={shouldShowTimestamp(msg, messages[idx - 1])}
             />
           ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+interface HermesEventEntry {
+  at: number
+  kind: string
+  detail: string
+}
+
+/**
+ * Live feed for a Hermes gateway run (metadata.hermes_run_id), proxied through
+ * /api/hermes-runs so the gateway API key never reaches the browser. Polls the
+ * run status while live and renders a compact event list + final output.
+ */
+function HermesRunFeed({ runId, agentName, isLive }: { runId: string; agentName?: string; isLive: boolean }) {
+  const [status, setStatus] = useState<string | null>(null)
+  const [output, setOutput] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [events, setEvents] = useState<HermesEventEntry[]>([])
+  const [tick, setTick] = useState(0)
+  const [unconfigured, setUnconfigured] = useState(false)
+
+  // Status poll — while live, refresh every 5s; otherwise once per open.
+  useEffect(() => {
+    let cancelled = false
+    const fetchStatus = async () => {
+      try {
+        const data = await apiFetch<any>(`/api/hermes-runs?run_id=${encodeURIComponent(runId)}`)
+        if (cancelled) return
+        setStatus(String(data.status || 'unknown'))
+        setOutput(typeof data.output === 'string' ? data.output : data.output != null ? JSON.stringify(data.output) : null)
+        setError(null)
+        setUnconfigured(false)
+      } catch (err: any) {
+        if (cancelled) return
+        if (err instanceof ApiError && err.status === 503) setUnconfigured(true)
+        else setError(err?.message || 'Failed to fetch Hermes run')
+      }
+    }
+    fetchStatus()
+    if (!isLive) return () => { cancelled = true }
+    const interval = setInterval(fetchStatus, 5000)
+    return () => { cancelled = true; clearInterval(interval) }
+  }, [runId, isLive, tick])
+
+  // Events poll — piggyback on the status cadence; the proxy returns the
+  // gateway's run events (SSE text or JSON array) which we flatten to lines.
+  useEffect(() => {
+    let cancelled = false
+    const fetchEvents = async () => {
+      try {
+        const res = await fetch(`/api/hermes-runs?run_id=${encodeURIComponent(runId)}&events=1`, {
+          headers: { Accept: 'application/json' },
+        })
+        if (!res.ok || cancelled) return
+        const text = await res.text()
+        let parsed: any = null
+        try { parsed = JSON.parse(text) } catch { /* SSE text */ }
+        const lines: HermesEventEntry[] = []
+        if (Array.isArray(parsed)) {
+          for (const ev of parsed) {
+            lines.push({
+              at: typeof ev.timestamp === 'number' ? ev.timestamp : typeof ev.created_at === 'number' ? ev.created_at : 0,
+              kind: String(ev.type || ev.event || ev.last_event || 'event'),
+              detail: typeof ev.preview === 'string' ? ev.preview.slice(0, 200) : '',
+            })
+          }
+        } else if (typeof text === 'string') {
+          // SSE: `event: x\ndata: {...}` lines — keep the type + short data.
+          for (const block of text.split('\n\n')) {
+            const evLine = block.split('\n').find(l => l.startsWith('event:'))
+            const dataLine = block.split('\n').find(l => l.startsWith('data:'))
+            if (!evLine && !dataLine) continue
+            lines.push({
+              at: 0,
+              kind: evLine ? evLine.slice(6).trim() : 'event',
+              detail: dataLine ? dataLine.slice(5).trim().slice(0, 200) : '',
+            })
+          }
+        }
+        if (!cancelled && lines.length) setEvents(lines.slice(-100))
+      } catch { /* events are best-effort */ }
+    }
+    fetchEvents()
+    if (!isLive) return () => { cancelled = true }
+    const interval = setInterval(fetchEvents, 5000)
+    return () => { cancelled = true; clearInterval(interval) }
+  }, [runId, isLive])
+
+  const statusColor =
+    status === 'completed' ? 'text-green-400' :
+    status === 'failed' ? 'text-red-400' :
+    status === 'stopped' ? 'text-orange-400' :
+    status === 'running' || status === 'started' ? 'text-blue-400' :
+    'text-muted-foreground'
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          {agentName && <span className="font-medium text-foreground">{agentName}</span>}
+          <span className="font-mono text-muted-foreground/50" title={runId}>{runId.slice(0, 20)}…</span>
+          {status && <span className={`font-mono ${statusColor}`}>{status}</span>}
+          {isLive && !['completed', 'failed', 'stopped'].includes(status || '') && (
+            <span className="flex items-center gap-1 text-green-400">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
+              live
+            </span>
+          )}
+          {!isLive && ['completed', 'failed', 'stopped'].includes(status || '') && (
+            <button type="button" onClick={() => setTick(t => t + 1)} className="text-blue-400 hover:text-blue-300">
+              refresh
+            </button>
+          )}
+        </div>
+      </div>
+
+      {unconfigured && (
+        <div className="bg-amber-500/10 border border-amber-500/20 text-amber-400 p-2 rounded-md text-xs">
+          Hermes runs bridge not configured (HERMES_RUNS_URL / HERMES_API_KEY). Run id recorded: <span className="font-mono">{runId}</span>
+        </div>
+      )}
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-2 rounded-md text-xs">
+          {error}
+          <button type="button" onClick={() => setTick(t => t + 1)} className="ml-2 underline">retry</button>
+        </div>
+      )}
+
+      {events.length > 0 && (
+        <div className="max-h-[30vh] overflow-y-auto rounded border border-border/30 bg-black/10 p-2 space-y-0.5">
+          {events.map((ev, idx) => (
+            <div key={idx} className="flex items-baseline gap-2 text-[11px] font-mono">
+              <span className={ev.kind.includes('fail') ? 'text-red-400' : ev.kind.includes('complet') ? 'text-green-400' : 'text-muted-foreground'}>
+                {ev.kind}
+              </span>
+              {ev.detail && <span className="text-muted-foreground/70 truncate">{ev.detail}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {output && (
+        <div className="rounded border border-border/30 bg-black/10 p-2">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60 mb-1">output</div>
+          <pre className="whitespace-pre-wrap break-words text-xs text-foreground/90 max-h-[20vh] overflow-y-auto">{output}</pre>
         </div>
       )}
     </div>
