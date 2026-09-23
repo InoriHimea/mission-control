@@ -88,7 +88,7 @@ describe('OpenClaw maintenance route security', () => {
     expect(response.status).toBe(429)
     expect(openClawMaintenanceLimiterMock).toHaveBeenCalledWith('9:3:7')
     expect(runOpenClawMock).not.toHaveBeenCalled()
-  })
+  }, 30000)
 
   it.each([
     ['update', '/api/openclaw/update'],

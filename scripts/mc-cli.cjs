@@ -156,6 +156,28 @@ function bodyFromFlags(flags) {
   return undefined;
 }
 
+function diagnosticFields(value) {
+  const fields = {};
+  for (const key of ['name', 'code']) {
+    if (typeof value?.[key] === 'string') {
+      fields[key] = value[key].slice(0, 160);
+    }
+  }
+  return fields;
+}
+
+function networkDiagnostic(err) {
+  const diagnostic = { err: diagnosticFields(err) };
+  if (err?.cause && typeof err.cause === 'object') {
+    diagnostic.cause = diagnosticFields(err.cause);
+  }
+  return diagnostic;
+}
+
+function exitCodeForResult(result) {
+  return result.network ? EXIT.NETWORK : mapStatusToExit(result.status);
+}
+
 async function httpRequest({ baseUrl, apiKey, cookie, method, route, body, timeoutMs = 20000 }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -197,7 +219,17 @@ async function httpRequest({ baseUrl, apiKey, cookie, method, route, body, timeo
     if (String(err?.name || '') === 'AbortError') {
       return { ok: false, status: 0, data: { error: `Request timeout after ${timeoutMs}ms` }, timeout: true, url, method };
     }
-    return { ok: false, status: 0, data: { error: err?.message || 'Network error' }, network: true, url, method };
+    return {
+      ok: false,
+      status: 0,
+      data: {
+        error: err?.message || 'Network error',
+        diagnostic: networkDiagnostic(err),
+      },
+      network: true,
+      url,
+      method,
+    };
   }
 }
 
@@ -662,7 +694,7 @@ async function run() {
       const body = bodyFromFlags(parsed.flags);
       const result = await httpRequest({ baseUrl, apiKey, cookie: profile.cookie, method, route, body, timeoutMs });
       printResult(result, asJson);
-      process.exit(result.ok ? EXIT.OK : mapStatusToExit(result.status));
+      process.exit(result.ok ? EXIT.OK : exitCodeForResult(result));
     }
 
     // Events watch (SSE)
@@ -699,7 +731,7 @@ async function run() {
     // If handler returned an http result directly (auth login/logout)
     if (result_or_config && 'ok' in result_or_config && 'status' in result_or_config) {
       printResult(result_or_config, asJson);
-      process.exit(result_or_config.ok ? EXIT.OK : mapStatusToExit(result_or_config.status));
+      process.exit(result_or_config.ok ? EXIT.OK : exitCodeForResult(result_or_config));
     }
 
     // Otherwise it returned { method, route, body? } — execute the request
@@ -715,7 +747,7 @@ async function run() {
     });
 
     printResult(result, asJson);
-    process.exit(result.ok ? EXIT.OK : mapStatusToExit(result.status));
+    process.exit(result.ok ? EXIT.OK : exitCodeForResult(result));
   } catch (err) {
     const message = err?.message || String(err);
     if (asJson) {

@@ -205,14 +205,14 @@ const baseEnv = {
   OPENCLAW_GATEWAY_HOST: gatewayHost,
   OPENCLAW_GATEWAY_PORT: gatewayPort,
   OPENCLAW_BIN: path.join(mockBinDir, 'openclaw'),
-  OPENCODE_BIN: path.join(mockBinDir, 'opencode'),
+  OPENCODE_BIN: path.join(mockBinDir, 'opencode.mjs'),
   CLAWDBOT_BIN: path.join(mockBinDir, 'clawdbot'),
   MC_SKILLS_USER_AGENTS_DIR: path.join(skillsRoot, 'user-agents'),
   MC_SKILLS_USER_CODEX_DIR: path.join(skillsRoot, 'user-codex'),
   MC_SKILLS_PROJECT_AGENTS_DIR: path.join(skillsRoot, 'project-agents'),
   MC_SKILLS_PROJECT_CODEX_DIR: path.join(skillsRoot, 'project-codex'),
   MC_SKILLS_OPENCLAW_DIR: path.join(skillsRoot, 'openclaw'),
-  PATH: `${mockBinDir}:${process.env.PATH || ''}`,
+  PATH: [mockBinDir, process.env.PATH].filter(Boolean).join(path.delimiter),
   E2E_GATEWAY_EXPECTED: mode === 'gateway' ? '1' : '0',
 }
 

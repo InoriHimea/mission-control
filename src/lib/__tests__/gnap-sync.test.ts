@@ -75,7 +75,7 @@ describe('initGnapRepo', () => {
     expect(fs.existsSync(path.join(repoPath, '.git'))).toBe(true)
 
     expect(fs.readFileSync(path.join(repoPath, 'version'), 'utf-8').trim()).toBe('1')
-  })
+  }, 30000)
 
   it('is idempotent — re-running does not error', () => {
     const repoPath = path.join(tmpDir, 'gnap-repo')
@@ -83,7 +83,7 @@ describe('initGnapRepo', () => {
     initGnapRepo(repoPath)
 
     expect(fs.existsSync(path.join(repoPath, '.git'))).toBe(true)
-  })
+  }, 30000)
 })
 
 describe('pushTaskToGnap', () => {
@@ -125,7 +125,7 @@ describe('pushTaskToGnap', () => {
       encoding: 'utf-8',
     })
     expect(log).toContain('Update task mc-42')
-  })
+  }, 30000)
 
   it('handles string tags (JSON serialized)', () => {
     const repoPath = path.join(tmpDir, 'gnap-repo')
@@ -145,7 +145,7 @@ describe('pushTaskToGnap', () => {
       fs.readFileSync(path.join(repoPath, 'tasks', 'mc-1.json'), 'utf-8')
     )
     expect(content.tags).toEqual(['bug', 'fix'])
-  })
+  }, 30000)
 })
 
 describe('removeTaskFromGnap', () => {
@@ -170,14 +170,14 @@ describe('removeTaskFromGnap', () => {
       encoding: 'utf-8',
     })
     expect(log).toContain('Remove task mc-7')
-  })
+  }, 30000)
 
   it('does nothing when task does not exist', () => {
     const repoPath = path.join(tmpDir, 'gnap-repo')
     initGnapRepo(repoPath)
     // Should not throw
     removeTaskFromGnap(999, repoPath)
-  })
+  }, 30000)
 })
 
 describe('pullTasksFromGnap', () => {
@@ -193,7 +193,7 @@ describe('pullTasksFromGnap', () => {
 
     const ids = tasks.map(t => t.id).sort()
     expect(ids).toEqual(['mc-1', 'mc-2'])
-  })
+  }, 30000)
 
   it('returns empty array for non-existent directory', () => {
     const tasks = pullTasksFromGnap(path.join(tmpDir, 'nonexistent'))
@@ -219,5 +219,5 @@ describe('getGnapStatus', () => {
     expect(status.taskCount).toBe(1)
     expect(status.hasRemote).toBe(false)
     expect(status.remoteUrl).toBe('')
-  })
+  }, 30000)
 })

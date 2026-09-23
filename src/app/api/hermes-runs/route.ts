@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 10_000)
     const res = await fetch(resource, {
-      headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
+      headers: { Authorization: `Bearer ${apiKey}`, Accept: wantEvents ? 'text/event-stream' : 'application/json' },
       signal: controller.signal,
       cache: 'no-store',
     })
@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
     } catch {
       // SSE /events payloads arrive as text/event-stream; hand the raw text
       // through — the UI parses minimal `data:` lines client-side.
-      return new NextResponse(text, { status: 200, headers: { 'Content-Type': 'application/json' } })
+      return new NextResponse(text, { status: 200, headers: { 'Content-Type': 'text/event-stream;charset=utf-8' } })
     }
   } catch (err: any) {
     logger.warn({ err: err?.message, runId }, 'hermes-runs proxy error')

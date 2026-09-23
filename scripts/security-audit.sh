@@ -80,18 +80,25 @@ echo ""
 # 1. .env file permissions
 echo "--- File Permissions ---"
 if [[ -f "$ENV_FILE" ]]; then
-  if perms=$(stat -c '%a' -- "$ENV_FILE" 2>/dev/null); then
-    : # GNU stat
-  elif perms=$(stat -f '%Lp' "$ENV_FILE" 2>/dev/null); then
-    : # BSD stat
-  else
-    perms="unknown"
-  fi
-  if [[ "$perms" == "600" ]]; then
-    pass ".env permissions are 600 (owner read/write only)"
-  else
-    fail ".env permissions are $perms (should be 600). Run: chmod 600 $ENV_FILE"
-  fi
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+      info ".env POSIX mode check skipped on Windows; verify NTFS ACLs separately"
+      ;;
+    *)
+      if perms=$(stat -c '%a' -- "$ENV_FILE" 2>/dev/null); then
+        : # GNU stat
+      elif perms=$(stat -f '%Lp' "$ENV_FILE" 2>/dev/null); then
+        : # BSD stat
+      else
+        perms="unknown"
+      fi
+      if [[ "$perms" == "600" ]]; then
+        pass ".env permissions are 600 (owner read/write only)"
+      else
+        fail ".env permissions are $perms (should be 600). Run: chmod 600 $ENV_FILE"
+      fi
+      ;;
+  esac
 else
   warn ".env file not found at $ENV_FILE"
 fi
