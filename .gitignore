@@ -54,3 +54,7 @@ docs/_*.png
 
 # IDE state
 .vs/
+
+# Internal ops notes: contain private infrastructure details, never publish
+TODO.md
+feature.md
