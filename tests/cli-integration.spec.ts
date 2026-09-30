@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test'
 import { execFile } from 'node:child_process'
+import { createServer } from 'node:net'
 import { promisify } from 'node:util'
 import path from 'node:path'
-import { API_KEY_HEADER, createTestAgent, deleteTestAgent, createTestTask, deleteTestTask } from './helpers'
+import { createTestAgent, deleteTestAgent, createTestTask, deleteTestTask } from './helpers'
 
 const execFileAsync = promisify(execFile)
 
@@ -10,22 +11,55 @@ const CLI = path.resolve('scripts/mc-cli.cjs')
 const BASE_URL = process.env.E2E_BASE_URL || 'http://127.0.0.1:3005'
 const API_KEY = 'test-api-key-e2e-12345'
 
+type CliResult = {
+  stdout: string
+  stderr: string
+  parsed: any
+  exitCode: number
+  signal: string | null
+  killed: boolean
+}
+
 /** Run mc-cli command via execFile (no shell) and return parsed JSON output */
-async function mc(...args: string[]): Promise<{ stdout: string; parsed: any; exitCode: number }> {
+async function runMc(baseUrl: string, apiKey: string, ...args: string[]): Promise<CliResult> {
   try {
-    const { stdout } = await execFileAsync('node', [CLI, ...args, '--json', '--url', BASE_URL, '--api-key', API_KEY], {
+    const { stdout, stderr } = await execFileAsync(process.execPath, [CLI, ...args, '--json', '--url', baseUrl, '--api-key', apiKey], {
       timeout: 15000,
-      env: { ...process.env, MC_URL: BASE_URL, MC_API_KEY: API_KEY },
+      env: { ...process.env, MC_URL: baseUrl, MC_API_KEY: apiKey },
     })
     let parsed: any
     try { parsed = JSON.parse(stdout) } catch { parsed = { raw: stdout } }
-    return { stdout, parsed, exitCode: 0 }
+    return { stdout, stderr, parsed, exitCode: 0, signal: null, killed: false }
   } catch (err: any) {
     const stdout = err.stdout || ''
+    const stderr = err.stderr || ''
     let parsed: any
-    try { parsed = JSON.parse(stdout) } catch { parsed = { raw: stdout, stderr: err.stderr } }
-    return { stdout, parsed, exitCode: err.code ?? 1 }
+    try { parsed = JSON.parse(stdout) } catch { parsed = { raw: stdout, stderr } }
+    return {
+      stdout,
+      stderr,
+      parsed,
+      exitCode: err.code ?? 1,
+      signal: err.signal ?? null,
+      killed: Boolean(err.killed),
+    }
   }
+}
+
+async function mc(...args: string[]): Promise<CliResult> {
+  return runMc(BASE_URL, API_KEY, ...args)
+}
+
+async function closedLoopbackEndpoint(): Promise<string> {
+  const server = createServer()
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', () => resolve())
+  })
+  const address = server.address()
+  if (!address || typeof address === 'string') throw new Error('Expected a loopback TCP address')
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
+  return `http://127.0.0.1:${address.port}`
 }
 
 test.describe('CLI Integration', () => {
@@ -203,5 +237,31 @@ test.describe('CLI Integration', () => {
   test('raw GET /api/status works', async () => {
     const { exitCode } = await mc('raw', '--method', 'GET', '--path', '/api/status?action=health')
     expect(exitCode).toBe(0)
+  })
+
+  test('network errors return safe diagnostics without API key leakage', async () => {
+    const apiKey = 'network-test-api-key-must-not-leak'
+    const closedEndpoint = await closedLoopbackEndpoint()
+    const result = await runMc(closedEndpoint, apiKey, 'raw', '--method', 'GET', '--path', '/api/status?action=health')
+
+    expect(result.exitCode).toBe(5)
+    expect(result.signal).toBeNull()
+    expect(result.killed).toBe(false)
+    expect(result.parsed.ok).toBe(false)
+    const diagnostic = result.parsed.data?.diagnostic
+    expect(diagnostic).toEqual(expect.objectContaining({
+      err: expect.any(Object),
+    }))
+    for (const [source, fields] of Object.entries(diagnostic)) {
+      expect(['err', 'cause']).toContain(source)
+      expect(fields).toEqual(expect.any(Object))
+      for (const [key, value] of Object.entries(fields as Record<string, unknown>)) {
+        expect(['name', 'code']).toContain(key)
+        expect(typeof value).toBe('string')
+        expect((value as string).length).toBeLessThanOrEqual(160)
+      }
+    }
+    expect(JSON.stringify(diagnostic)).not.toContain(apiKey)
+    expect(`${result.stdout}${result.stderr}`).not.toContain(apiKey)
   })
 })

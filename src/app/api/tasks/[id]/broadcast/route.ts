@@ -3,6 +3,7 @@ import { getDatabase, db_helpers } from '@/lib/db'
 import { runOpenClaw } from '@/lib/command'
 import { requireRole } from '@/lib/auth'
 import { logger } from '@/lib/logger'
+import { getOpenClawSessionTransportError } from '@/lib/agent-providers'
 
 export async function POST(
   request: NextRequest,
@@ -15,7 +16,7 @@ export async function POST(
     const resolvedParams = await params
     const taskId = parseInt(resolvedParams.id)
     const body = await request.json()
-    const workspaceId = auth.user.workspace_id ?? 1;
+    const workspaceId = auth.user.workspace_id ?? 1
     const author = auth.user.display_name || auth.user.username || 'system'
     const message = (body.message || '').trim()
 
@@ -42,12 +43,14 @@ export async function POST(
     }
 
     const agents = db
-      .prepare('SELECT name, session_key FROM agents WHERE workspace_id = ? AND name IN (' + Array.from(subscribers).map(() => '?').join(',') + ')')
-      .all(workspaceId, ...Array.from(subscribers)) as Array<{ name: string; session_key?: string }>
+      .prepare('SELECT name, session_key, runtime_type FROM agents WHERE workspace_id = ? AND name IN (' + Array.from(subscribers).map(() => '?').join(',') + ')')
+      .all(workspaceId, ...Array.from(subscribers)) as Array<{ name: string; session_key?: string; runtime_type?: string | null }>
 
     const results = await Promise.allSettled(
       agents.map(async (agent) => {
-        if (!agent.session_key) return 'skipped'
+        const transportError = getOpenClawSessionTransportError(agent)
+        if (transportError || !agent.session_key) return 'skipped'
+
         await runOpenClaw(
           [
             'gateway',

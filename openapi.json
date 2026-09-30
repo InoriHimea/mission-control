@@ -10999,6 +10999,68 @@
         }
       }
     },
+    "/api/hermes-runs": {
+      "get": {
+        "tags": ["Agents"],
+        "summary": "Get a Hermes run or its event stream",
+        "operationId": "getHermesRun",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "query",
+            "required": true,
+            "description": "Hermes run identifier",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            }
+          },
+          {
+            "name": "events",
+            "in": "query",
+            "required": false,
+            "description": "Set to `1` to retrieve the run event stream.",
+            "schema": {
+              "type": "string",
+              "enum": ["0", "1"],
+              "default": "0"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unnormalized Hermes gateway proxy payload. Run details are returned as JSON; event requests can return the transparent event-stream text payload.",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "additionalProperties": true }
+              },
+              "text/event-stream": {
+                "schema": { "type": "string" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "502": {
+            "description": "Hermes gateway rejected or could not serve the request",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "503": {
+            "description": "Hermes runs bridge is unavailable",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "504": {
+            "description": "Hermes gateway request timed out or could not be reached",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "default": {
+            "description": "Unexpected proxy error",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          }
+        }
+      }
+    },
     "/api/hermes/events": {
       "post": {
         "tags": [

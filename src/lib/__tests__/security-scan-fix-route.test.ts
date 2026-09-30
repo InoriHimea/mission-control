@@ -161,7 +161,9 @@ describe('security-scan fix route env mutation', () => {
     const response = await POST(request(JSON.stringify({ ids: ['world_writable'] })))
 
     expect(response.status).toBe(200)
-    expect(statSync(filePath).mode & 0o777).toBe(0o664)
+    if (process.platform !== 'win32') {
+      expect(statSync(filePath).mode & 0o777).toBe(0o664)
+    }
   })
 
   it('reports a busy OpenClaw config without overwriting it', async () => {

@@ -735,7 +735,7 @@ for (const tool of TOOLS) {
 
 const SERVER_INFO = {
   name: 'mission-control',
-  version: '2.3.0',
+  version: require('../package.json').version,
 };
 
 const CAPABILITIES = {

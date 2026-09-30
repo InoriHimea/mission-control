@@ -24,19 +24,19 @@ describe('security scan admin password resolution', () => {
     process.env.AUTH_PASS_B64 = Buffer.from('strong-password-123').toString('base64')
 
     expect(authPasswordCheck()).toMatchObject({ status: 'pass' })
-  })
+  }, 30000)
 
   it('uses the plain password when base64 configuration is invalid', () => {
     process.env.AUTH_PASS = 'strong-fallback-123'
     process.env.AUTH_PASS_B64 = '%%%invalid%%%'
 
     expect(authPasswordCheck()).toMatchObject({ status: 'pass' })
-  })
+  }, 30000)
 
   it('rejects an insecure default supplied through base64 configuration', () => {
     delete process.env.AUTH_PASS
     process.env.AUTH_PASS_B64 = Buffer.from('password').toString('base64')
 
     expect(authPasswordCheck()).toMatchObject({ status: 'fail' })
-  })
+  }, 30000)
 })

@@ -3,6 +3,7 @@ import { getDatabase, db_helpers } from '@/lib/db'
 import { runOpenClaw } from '@/lib/command'
 import { requireRole } from '@/lib/auth'
 import { logger } from '@/lib/logger'
+import { getOpenClawSessionTransportError } from '@/lib/agent-providers'
 
 export async function POST(
   request: NextRequest,
@@ -14,7 +15,7 @@ export async function POST(
   try {
     const resolvedParams = await params
     const agentId = resolvedParams.id
-    const workspaceId = auth.user.workspace_id ?? 1;
+    const workspaceId = auth.user.workspace_id ?? 1
     const body = await request.json().catch(() => ({}))
     const customMessage =
       typeof body?.message === 'string' ? body.message.trim() : ''
@@ -27,6 +28,9 @@ export async function POST(
     if (!agent) {
       return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
     }
+
+    const transportError = getOpenClawSessionTransportError(agent)
+    if (transportError) return NextResponse.json(transportError, { status: 409 })
 
     if (!agent.session_key) {
       return NextResponse.json(

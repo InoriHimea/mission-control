@@ -2,6 +2,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+const dataDir = path.join(os.tmpdir(), 'mission-control-data')
+const buildScratchDir = path.join(os.tmpdir(), 'build-scratch')
+
 async function loadConfigWithEnv(env: Record<string, string | undefined>) {
   vi.resetModules()
 
@@ -56,46 +59,49 @@ describe('config data paths', () => {
 
   it('derives db and token paths from MISSION_CONTROL_DATA_DIR', async () => {
     const config = await loadConfigWithEnv({
-      MISSION_CONTROL_DATA_DIR: '/tmp/mission-control-data',
+      MISSION_CONTROL_DATA_DIR: dataDir,
       MISSION_CONTROL_DB_PATH: undefined,
       MISSION_CONTROL_TOKENS_PATH: undefined,
     })
 
-    expect(config.dataDir).toBe('/tmp/mission-control-data')
-    expect(config.dbPath).toBe('/tmp/mission-control-data/mission-control.db')
-    expect(config.tokensPath).toBe('/tmp/mission-control-data/mission-control-tokens.json')
+    expect(config.dataDir).toBe(dataDir)
+    expect(config.dbPath).toBe(path.join(dataDir, 'mission-control.db'))
+    expect(config.tokensPath).toBe(path.join(dataDir, 'mission-control-tokens.json'))
   })
 
   it('respects explicit db and token path overrides', async () => {
+    const dbPath = path.join(os.tmpdir(), 'custom.db')
+    const tokensPath = path.join(os.tmpdir(), 'custom-tokens.json')
     const config = await loadConfigWithEnv({
-      MISSION_CONTROL_DATA_DIR: '/tmp/mission-control-data',
-      MISSION_CONTROL_DB_PATH: '/tmp/custom.db',
-      MISSION_CONTROL_TOKENS_PATH: '/tmp/custom-tokens.json',
+      MISSION_CONTROL_DATA_DIR: dataDir,
+      MISSION_CONTROL_DB_PATH: dbPath,
+      MISSION_CONTROL_TOKENS_PATH: tokensPath,
     })
 
-    expect(config.dataDir).toBe('/tmp/mission-control-data')
-    expect(config.dbPath).toBe('/tmp/custom.db')
-    expect(config.tokensPath).toBe('/tmp/custom-tokens.json')
+    expect(config.dataDir).toBe(dataDir)
+    expect(config.dbPath).toBe(dbPath)
+    expect(config.tokensPath).toBe(tokensPath)
   })
 
   it('uses a build-scoped worker data dir during next build', async () => {
     const config = await loadConfigWithEnv({
       NEXT_PHASE: 'phase-production-build',
-      MISSION_CONTROL_DATA_DIR: '/tmp/runtime-data',
-      MISSION_CONTROL_BUILD_DATA_DIR: '/tmp/build-scratch',
+      MISSION_CONTROL_DATA_DIR: path.join(os.tmpdir(), 'runtime-data'),
+      MISSION_CONTROL_BUILD_DATA_DIR: buildScratchDir,
       MISSION_CONTROL_DB_PATH: undefined,
       MISSION_CONTROL_TOKENS_PATH: undefined,
     })
 
-    expect(config.dataDir).toMatch(/^\/tmp\/build-scratch\/worker-[^/]+$/)
-    expect(config.dbPath).toMatch(/^\/tmp\/build-scratch\/worker-[^/]+\/mission-control\.db$/)
-    expect(config.tokensPath).toMatch(/^\/tmp\/build-scratch\/worker-[^/]+\/mission-control-tokens\.json$/)
+    expect(path.dirname(config.dataDir)).toBe(buildScratchDir)
+    expect(path.basename(config.dataDir)).toMatch(/^worker-[^/\\]+$/)
+    expect(config.dbPath).toBe(path.join(config.dataDir, 'mission-control.db'))
+    expect(config.tokensPath).toBe(path.join(config.dataDir, 'mission-control-tokens.json'))
   })
 
   it('allocates a distinct private scratch directory for each build worker', async () => {
     const env = {
       NEXT_PHASE: 'phase-production-build',
-      MISSION_CONTROL_BUILD_DATA_DIR: '/tmp/build-scratch',
+      MISSION_CONTROL_BUILD_DATA_DIR: buildScratchDir,
       MISSION_CONTROL_BUILD_DB_PATH: undefined,
       MISSION_CONTROL_BUILD_TOKENS_PATH: undefined,
     }
@@ -107,18 +113,21 @@ describe('config data paths', () => {
   })
 
   it('prefers build-specific db and token overrides during next build', async () => {
+    const dbPath = path.join(os.tmpdir(), 'build.db')
+    const tokensPath = path.join(os.tmpdir(), 'build-tokens.json')
     const config = await loadConfigWithEnv({
       NEXT_PHASE: 'phase-production-build',
-      MISSION_CONTROL_DATA_DIR: '/tmp/runtime-data',
-      MISSION_CONTROL_DB_PATH: '/tmp/runtime.db',
-      MISSION_CONTROL_TOKENS_PATH: '/tmp/runtime-tokens.json',
-      MISSION_CONTROL_BUILD_DB_PATH: '/tmp/build.db',
-      MISSION_CONTROL_BUILD_TOKENS_PATH: '/tmp/build-tokens.json',
+      MISSION_CONTROL_DATA_DIR: path.join(os.tmpdir(), 'runtime-data'),
+      MISSION_CONTROL_DB_PATH: path.join(os.tmpdir(), 'runtime.db'),
+      MISSION_CONTROL_TOKENS_PATH: path.join(os.tmpdir(), 'runtime-tokens.json'),
+      MISSION_CONTROL_BUILD_DB_PATH: dbPath,
+      MISSION_CONTROL_BUILD_TOKENS_PATH: tokensPath,
     })
 
     const expectedBuildRoot = path.join(os.tmpdir(), 'mission-control-build')
-    expect(config.dataDir).toMatch(new RegExp(`^${expectedBuildRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/worker-[^/]+$`))
-    expect(config.dbPath).toBe('/tmp/build.db')
-    expect(config.tokensPath).toBe('/tmp/build-tokens.json')
+    expect(path.dirname(config.dataDir)).toBe(expectedBuildRoot)
+    expect(path.basename(config.dataDir)).toMatch(/^worker-[^/\\]+$/)
+    expect(config.dbPath).toBe(dbPath)
+    expect(config.tokensPath).toBe(tokensPath)
   })
 })

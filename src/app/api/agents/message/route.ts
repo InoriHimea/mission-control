@@ -8,6 +8,7 @@ import { logger } from '@/lib/logger'
 import { scanForInjection } from '@/lib/injection-guard'
 import { scanForSecrets } from '@/lib/secret-scanner'
 import { logSecurityEvent } from '@/lib/security-events'
+import { getOpenClawSessionTransportError } from '@/lib/agent-providers'
 
 export async function POST(request: NextRequest) {
   const auth = requireRole(request, 'operator')
@@ -41,13 +42,17 @@ export async function POST(request: NextRequest) {
     }
 
     const db = getDatabase()
-    const workspaceId = auth.user.workspace_id ?? 1;
+    const workspaceId = auth.user.workspace_id ?? 1
     const agent = db
       .prepare('SELECT * FROM agents WHERE name = ? AND workspace_id = ?')
       .get(to, workspaceId) as any
     if (!agent) {
       return NextResponse.json({ error: 'Recipient agent not found' }, { status: 404 })
     }
+
+    const transportError = getOpenClawSessionTransportError(agent)
+    if (transportError) return NextResponse.json(transportError, { status: 409 })
+
     if (!agent.session_key) {
       return NextResponse.json(
         { error: 'Recipient agent has no session key configured' },

@@ -447,6 +447,21 @@ function readHermesTranscriptFromDbPath(dbPath: string, sessionId: string, limit
 }
 
 function readHermesTranscript(sessionId: string, limit: number): TranscriptMessage[] {
+  // Deployment note: in Docker, config.homeDir resolves to /nonexistent (the
+  // container user has no real home), so the stock path never exists there.
+  // HERMES_STATE_DB lets an operator point at a bind-mounted Hermes state.db
+  // (read-only) without guessing; fall back to the historical layout first.
+  const envPath = process.env.HERMES_STATE_DB?.trim()
+  if (envPath) {
+    try {
+      if (fs.existsSync(envPath)) {
+        return readHermesTranscriptFromDbPath(envPath, sessionId, limit)
+      }
+      logger.warn({ envPath }, 'HERMES_STATE_DB is set but the file does not exist; falling back')
+    } catch {
+      // Fall through to the default path below.
+    }
+  }
   const dbPath = path.join(config.homeDir, '.hermes', 'state.db')
   return readHermesTranscriptFromDbPath(dbPath, sessionId, limit)
 }
