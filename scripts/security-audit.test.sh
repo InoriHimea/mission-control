@@ -27,10 +27,24 @@ MC_DISABLE_RATE_LIMIT=0
 EOF
 chmod 600 "$HARDENED_ENV"
 
-output="$(bash "$AUDIT" --env-file "$HARDENED_ENV" --strict)"
-grep -Fq '[PASS] AUTH_PASS is set to a non-default value (19 chars)' <<< "$output"
-grep -Fq '=== Security Score: 8 / 8 ===' <<< "$output"
-grep -Fq 'All checks passed!' <<< "$output"
+audit_output=""
+if ! audit_output="$(bash "$AUDIT" --env-file "$HARDENED_ENV" --strict)"; then
+  echo 'Expected hardened --strict audit to pass, but it failed:' >&2
+  printf '%s\n' "$audit_output" >&2
+  exit 1
+fi
+grep -Fq '[PASS] AUTH_PASS is set to a non-default value (19 chars)' <<< "$audit_output"
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*)
+    grep -Fq '[INFO] .env POSIX mode check skipped on Windows; verify NTFS ACLs separately' <<< "$audit_output"
+    grep -Fq '=== Security Score: 7 / 7 ===' <<< "$audit_output"
+    ;;
+  *)
+    grep -Fq '[PASS] .env permissions are 600 (owner read/write only)' <<< "$audit_output"
+    grep -Fq '=== Security Score: 8 / 8 ===' <<< "$audit_output"
+    ;;
+esac
+grep -Fq 'All checks passed!' <<< "$audit_output"
 
 cat > "$INSECURE_ENV" <<'EOF'
 AUTH_PASS=password

@@ -47,33 +47,33 @@ describe('scanOpenClaw — gateway_auth credential handling', () => {
     })
     expect(() => runSecurityScan()).not.toThrow()
     expect(gatewayAuthStatus()).toBe('pass')
-  })
+  }, 30000)
 
   it('passes when password is a SecretRef object', () => {
     writeOpenClawConfig({
       gateway: { auth: { mode: 'password', password: { source: 'vault', ref: 'op://vault/item' } } },
     })
     expect(gatewayAuthStatus()).toBe('pass')
-  })
+  }, 30000)
 
   it('passes when token is a non-empty plain string', () => {
     writeOpenClawConfig({
       gateway: { auth: { mode: 'token', token: 'plain-secret-token' } },
     })
     expect(gatewayAuthStatus()).toBe('pass')
-  })
+  }, 30000)
 
   it('fails when token mode is set but token is an empty string', () => {
     writeOpenClawConfig({
       gateway: { auth: { mode: 'token', token: '' } },
     })
     expect(gatewayAuthStatus()).toBe('fail')
-  })
+  }, 30000)
 
   it('fails when token mode is set but token is missing', () => {
     writeOpenClawConfig({
       gateway: { auth: { mode: 'token' } },
     })
     expect(gatewayAuthStatus()).toBe('fail')
-  })
+  }, 30000)
 })

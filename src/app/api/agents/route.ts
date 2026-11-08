@@ -437,8 +437,9 @@ export async function PUT(request: NextRequest) {
       }
 
       if (runtime_type !== undefined) {
-        // Same vocabulary as createAgentSchema; empty string clears the field.
-        const allowedRuntimes = ['hermes', 'openclaw', 'claude', 'codex', 'custom'];
+        // Same vocabulary as createAgentSchema (including 'opencode', which the
+        // runtime scanner recognizes); empty string clears the field.
+        const allowedRuntimes = ['hermes', 'openclaw', 'claude', 'codex', 'opencode', 'custom'];
         if (runtime_type !== null && runtime_type !== '' && !allowedRuntimes.includes(runtime_type)) {
           return NextResponse.json({ error: 'Invalid runtime_type' }, { status: 400 });
         }

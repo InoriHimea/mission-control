@@ -8,6 +8,17 @@ All notable changes to Mission Control are documented in this file.
 
 ---
 
+## [2.3.2] - 2026-09-23
+
+### Changed
+- Updated the cross-platform test suite and test timing expectations for reliable
+  validation across supported environments.
+- Documented `GET /api/hermes-runs` in OpenAPI, including validated query
+  parameters, transparent JSON/event-stream proxy payloads, and gateway error
+  responses.
+
+---
+
 ## [2.3.0] - 2026-07-25
 
 This release patches 13 known dependency vulnerabilities (8 high severity), refreshes the test toolchain to current majors, and closes a locale-integrity gap. Self-hosted operators should upgrade promptly for the dependency fixes.
